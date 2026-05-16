@@ -5,13 +5,13 @@ def P_moves(pos, matrix):
     x, y = pos
 
     if x < 3:
-        moves.append((x + 1, y))
+        moves.append("down")
     if x > 0:
-        moves.append((x - 1, y))
+        moves.append("up")
     if y < 3:
-        moves.append((x, y + 1))
+        moves.append("right")
     if y > 0:
-        moves.append((x, y - 1))
+        moves.append("left")
 
     return moves
 
@@ -22,16 +22,23 @@ def Rule(pos, matrix):
 
     if matrix[x][y] == 1:
         matrix[x][y] = 0
-
     moves = P_moves(pos, matrix)
     action=random.choice(moves)
-
-    return random
-
-
-def solve(pos, matrix, step=0):
-
+    return action
+def action(pos, matrix):
+    action=Rule(pos, matrix)
+    if(action=="down"):
+        return (pos[0]+1,pos[1])
+    elif(action=="up"):
+        return (pos[0]-1,pos[1])
+    elif(action=="right"):
+        return (pos[0],pos[1]+1)
+    elif(action=="left"):
+        return (pos[0],pos[1]-1)
     
+def solve(pos, matrix,step=0):
+
+
     if step > 10000:
         return pos
 
@@ -47,8 +54,7 @@ def solve(pos, matrix, step=0):
             break
 
     if stop:
-        new_pos = Rule(pos, matrix)
-
+        new_pos = action(pos, matrix)
         return solve(new_pos, matrix, step + 1)
 
     else:

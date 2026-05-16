@@ -1,6 +1,5 @@
 import random
 
-
 def search_state(matrix):
 
     for i in range(3):
@@ -30,7 +29,29 @@ def RULES(state):
 
     return moves
 
-def UPDATE_STATE(state, action, matrix, model):
+
+def fake_move(state, action, matrix):
+
+    temp = [row[:] for row in matrix]
+
+    x, y = state
+
+    if action == 'up':
+        temp[x][y], temp[x-1][y] = temp[x-1][y], temp[x][y]
+
+    elif action == 'down':
+        temp[x][y], temp[x+1][y] = temp[x+1][y], temp[x][y]
+
+    elif action == 'left':
+        temp[x][y], temp[x][y-1] = temp[x][y-1], temp[x][y]
+
+    elif action == 'right':
+        temp[x][y], temp[x][y+1] = temp[x][y+1], temp[x][y]
+
+    return str(temp)
+
+
+def UPDATE_STATE(state, action, matrix):
 
     x, y = state
 
@@ -62,14 +83,24 @@ def UPDATE_STATE(state, action, matrix, model):
 
         state = (x, y+1)
 
-    model.append(str(matrix))
-
     return state
 
 
-def action(state):
+def choose_action(state, matrix, model):
 
     moves = RULES(state)
+
+    valid_moves = []
+
+    for move in moves:
+
+        next_state = fake_move(state, move, matrix)
+
+        if next_state not in model:
+            valid_moves.append(move)
+
+    if valid_moves:
+        return random.choice(valid_moves)
 
     return random.choice(moves)
 
@@ -82,25 +113,15 @@ def solve_puzzle(matrix, model, target):
 
     while matrix != target:
 
-        action_ = action(state)
-
-        old = str(matrix)
+        action_ = choose_action(state, matrix, model)
 
         state = UPDATE_STATE(
             state,
             action_,
-            matrix,
-            model
+            matrix
         )
 
-        
-        if model.count(str(matrix)) > 1:
-
-            matrix[:] = eval(old)
-
-            state = search_state(matrix)
-
-            continue
+        model.append(str(matrix))
 
         step += 1
 
@@ -115,6 +136,7 @@ def solve_puzzle(matrix, model, target):
 
     if matrix == target:
         print("\nĐã giải xong")
+
 
 def main():
 
