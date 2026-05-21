@@ -1,7 +1,6 @@
 from collections import deque
 import copy
-
-
+from queue import PriorityQueue
 class Node:
     def __init__(self, state, parent=None, action=None, depth=0):
         self.state = state  # trạng thái hiện tại của puzzle
@@ -51,24 +50,34 @@ class Node:
 
         return neighbors
 
-
-def BFS(start_state, target_state):
-    """Thuật toán BFS để giải 8 puzzle"""
+def difference(state1, state2):
+    """Tính số lượng ô khác nhau giữa hai trạng thái"""
+    diff = 0
+    for i in range(3):
+        for j in range(3):
+            if state1[i][j] != state2[i][j]:
+                diff += 1
+    return diff
+def UCS(start_state, target_state):
+    """Thuật toán UCS để giải 8 puzzle"""
     start_node = Node(start_state, parent=None, action=None, depth=0)
 
     # Kiểm tra xem start_node có phải là target không
     if start_node.state == target_state:
         return start_node, 0
-
+    
     # Queue để lưu các node cần khám phá
-    queue = deque([start_node])
+    frontier = PriorityQueue()
+    frontier.put((0, start_node))  # (chi phí, node)
     # Set để lưu các trạng thái đã khám phá (để tránh lặp)
     visited = {tuple(tuple(row) for row in start_state)}
 
     nodes_explored = 0
 
-    while queue:
-        current_node = queue.popleft()
+    while frontier:
+        current_node = frontier.get()
+        if(current_node.state == target_state):
+            return current_node, nodes_explored
         nodes_explored += 1
 
         # Lấy các hàng xóm của node hiện tại
@@ -79,12 +88,8 @@ def BFS(start_state, target_state):
             if neighbor_state_tuple not in visited:
                 visited.add(neighbor_state_tuple)
 
-                # Kiểm tra xem đã tìm thấy target không
-                if neighbor.state == target_state:
-                    return neighbor, nodes_explored
-
-                # Thêm vào queue để khám phá tiếp
-                queue.append(neighbor)
+                # Thêm vào frontier với chi phí bằng độ sâu (UCS)
+                frontier.put((neighbor.depth, neighbor))
 
     # Không tìm thấy đường đi
     return None, nodes_explored
@@ -141,8 +146,8 @@ def print_solution(path):
 
 
 def main():
-    start = [[1, 2, 3], [4, 0, 6], [7, 8, 5]]
-    target = [[1, 2, 3], [4, 5, 6], [7, 8, 0]]
+    start = [[2, 8, 3], [1, 6, 4], [7, 0, 5]]
+    target = [[1, 2, 3], [8, 0, 4], [7, 6, 5]]
 
     print("TRẠNG THÁI BAN ĐẦU:")
     print_state(start)

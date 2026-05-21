@@ -65,6 +65,25 @@ class PuzzleModel:
         """Chuyển trạng thái thành tuple"""
         return tuple(tuple(row) for row in state)
 
+    def count_inversions(self, state):
+        """Đếm số inversions trong trạng thái"""
+        flat = [num for row in state for num in row if num != 0]
+        inversions = 0
+        for i in range(len(flat)):
+            for j in range(i + 1, len(flat)):
+                if flat[i] > flat[j]:
+                    inversions += 1
+        return inversions
+
+    def is_solvable(self):
+        """Kiểm tra xem puzzle có giải được không (dựa trên inversions)"""
+        # Đếm inversions của start và target
+        start_inv = self.count_inversions(self.start_state)
+        target_inv = self.count_inversions(self.target_state)
+
+        # Hai trạng thái chỉ có thể đến nhau được nếu inversions có cùng parity
+        return (start_inv % 2) == (target_inv % 2)
+
     def _dfs_limited(self, node, depth_limit, visited):
         """DFS với giới hạn độ sâu"""
         if node.state == self.target_state:
@@ -102,8 +121,11 @@ class PuzzleModel:
 
         return None, False
 
-    def ids(self, max_depth=100):
-        """Thuật toán IDS (Iterative Deepening Search)"""
+    def ids(self, max_depth=30, timeout=30):
+        """Thuật toán IDS (Iterative Deepening Search) với timeout"""
+        import time
+
+        start_time = time.time()
         start_node = PuzzleNode(self.start_state, parent=None, action=None, depth=0)
 
         if start_node.state == self.target_state:
@@ -114,6 +136,10 @@ class PuzzleModel:
         self.explored_nodes = []
 
         for depth_limit in range(0, max_depth + 1):
+            # Kiểm tra timeout
+            if time.time() - start_time > timeout:
+                return None, self.nodes_count, False
+
             self.explored_nodes = []
             visited = set()
 
@@ -404,17 +430,27 @@ class PuzzleView:
             lines = text.strip().split("\n")
             state = []
             for line in lines:
+                if not line.strip():
+                    continue
                 row = list(map(int, line.split()))
                 if len(row) != 3:
                     raise ValueError("Mỗi hàng phải có 3 phần tử")
                 state.append(row)
             if len(state) != 3:
                 raise ValueError("Phải có 3 hàng")
+
+            # Validate: kiểm tra số 0, các số nằm trong [0, 8]
+            flat = [num for row in state for num in row]
+            if 0 not in flat:
+                raise ValueError("Phải có số 0 (ô trống)")
+            if sorted(flat) != list(range(9)):
+                raise ValueError("Phải chứa các số từ 0 đến 8, mỗi số một lần")
+
             return state
-        except:
+        except Exception as e:
             self.show_error(
-                "Lỗi",
-                "Định dạng START STATE không hợp lệ!\nVí dụ:\n1 2 3\n4 5 6\n7 8 0",
+                "Lỗi START STATE",
+                f"Định dạng không hợp lệ!\n{str(e)}\nVí dụ:\n1 2 3\n4 5 6\n7 8 0",
             )
             return None
 
@@ -425,17 +461,27 @@ class PuzzleView:
             lines = text.strip().split("\n")
             state = []
             for line in lines:
+                if not line.strip():
+                    continue
                 row = list(map(int, line.split()))
                 if len(row) != 3:
                     raise ValueError("Mỗi hàng phải có 3 phần tử")
                 state.append(row)
             if len(state) != 3:
                 raise ValueError("Phải có 3 hàng")
+
+            # Validate: kiểm tra số 0, các số nằm trong [0, 8]
+            flat = [num for row in state for num in row]
+            if 0 not in flat:
+                raise ValueError("Phải có số 0 (ô trống)")
+            if sorted(flat) != list(range(9)):
+                raise ValueError("Phải chứa các số từ 0 đến 8, mỗi số một lần")
+
             return state
-        except:
+        except Exception as e:
             self.show_error(
-                "Lỗi",
-                "Định dạng TARGET STATE không hợp lệ!\nVí dụ:\n1 2 3\n4 5 6\n7 8 0",
+                "Lỗi TARGET STATE",
+                f"Định dạng không hợp lệ!\n{str(e)}\nVí dụ:\n1 2 3\n4 5 6\n7 8 0",
             )
             return None
 
@@ -459,6 +505,16 @@ class PuzzleView:
         """Enable nút Auto"""
         self.auto_btn.config(state=tk.NORMAL)
 
+    def disable_nav_buttons(self):
+        """Disable nút điều hướng"""
+        self.next_btn.config(state=tk.DISABLED)
+        self.prev_btn.config(state=tk.DISABLED)
+
+    def enable_nav_buttons(self):
+        """Enable nút điều hướng"""
+        self.next_btn.config(state=tk.NORMAL)
+        self.prev_btn.config(state=tk.NORMAL)
+
 
 # ============================================
 # CONTROLLER
@@ -476,6 +532,10 @@ class PuzzleController:
         self.is_animating = False
 
         self.setup_event_handlers()
+
+        # Disable nav buttons lúc đầu (chưa có solution)
+        self.view.disable_nav_buttons()
+        self.view.disable_auto_button()
 
     def setup_event_handlers(self):
         """Gắn các event handler cho View"""
@@ -497,9 +557,18 @@ class PuzzleController:
         if start_state is None or target_state is None:
             return
 
+        # Kiểm tra xem start và target có khác nhau không
+        if start_state == target_state:
+            self.view.show_warning(
+                "Cảnh báo", "Start state và Target state phải khác nhau!"
+            )
+            return
+
         self.is_solving = True
         self.view.disable_solve_button()
-        self.view.update_status("Solving...")
+        self.view.disable_nav_buttons()
+        self.view.disable_auto_button()
+        self.view.update_status("Đang giải...")
 
         # Chạy trong thread riêng
         thread = threading.Thread(
@@ -512,7 +581,39 @@ class PuzzleController:
         """Luồng giải puzzle"""
         try:
             self.model = PuzzleModel(start_state, target_state)
-            solution_node, nodes_explored, success = self.model.ids(max_depth=100)
+
+            # Kiểm tra xem puzzle có giải được không
+            if not self.model.is_solvable():
+                self.view.root.after(
+                    0,
+                    lambda: self.view.show_error(
+                        "Không thể giải",
+                        "❌ Puzzle này KHÔNG CÓ LỜI GIẢI!\n\n"
+                        "Lý do: Start và Target state không có cùng parity.\n"
+                        "Trong 8-puzzle, không phải mọi cấu hình đều\n"
+                        "có thể chuyển thành nhau.",
+                    ),
+                )
+                self.view.root.after(0, self._enable_buttons_after_error)
+                return
+
+            # Kiểm tra xem đã ở trạng thái đích chưa
+            if start_state == target_state:
+                self.view.root.after(
+                    0, lambda: self.view.update_status("✓ Đã ở trạng thái đích!")
+                )
+                self.solution_states = [start_state]
+                self.solution_actions = []
+                self.view.root.after(0, self._update_after_solve, 1)
+                return
+
+            # Chạy IDS với timeout 30 giây
+            self.view.root.after(
+                0, lambda: self.view.update_status("Đang tìm kiếm... (tối đa 30 giây)")
+            )
+            solution_node, nodes_explored, success = self.model.ids(
+                max_depth=30, timeout=30
+            )
 
             if success:
                 self.solution_states = self.model.get_solution_states()
@@ -521,13 +622,27 @@ class PuzzleController:
                 self.view.root.after(0, self._update_after_solve, nodes_explored)
             else:
                 self.view.root.after(
-                    0, lambda: self.view.show_error("Lỗi", "Không tìm thấy lời giải!")
+                    0,
+                    lambda: self.view.show_error(
+                        "Không tìm thấy lời giải",
+                        f"❌ Sau 30 giây vẫn không tìm thấy lời giải.\n\n"
+                        f"Đã khám phá {nodes_explored} nút.\n"
+                        f"Puzzle này có thể:\n"
+                        f"  • Quá khó để giải\n"
+                        f"  • Không có lời giải",
+                    ),
                 )
+                self.view.root.after(0, self._enable_buttons_after_error)
         except Exception as e:
             self.view.root.after(0, lambda: self.view.show_error("Lỗi", str(e)))
+            self.view.root.after(0, self._enable_buttons_after_error)
         finally:
             self.is_solving = False
-            self.view.root.after(0, lambda: self.view.enable_solve_button())
+
+    def _enable_buttons_after_error(self):
+        """Enable buttons sau lỗi"""
+        self.view.enable_solve_button()
+        self.view.update_status("Ready")
 
     def _update_after_solve(self, nodes_explored):
         """Cập nhật UI sau khi giải xong"""
@@ -542,17 +657,24 @@ class PuzzleController:
 
         self.view.display_info(info)
         self.view.draw_puzzle(self.solution_states[0])
+        self.view.enable_nav_buttons()
+        self.view.enable_auto_button()
+        self.view.enable_solve_button()
+        self.current_step = 0
         self.update_step_display()
-        self.view.update_status(f"✓ Solved! Steps: {len(self.solution_actions)}")
 
     def update_step_display(self):
         """Cập nhật hiển thị bước hiện tại"""
         if self.solution_states:
             self.view.draw_puzzle(self.solution_states[self.current_step])
+
+            # Hiển thị hành động hiện tại
             if self.current_step < len(self.solution_actions):
-                step_info = f"Step {self.current_step + 1}/{len(self.solution_actions)}: {self.solution_actions[self.current_step]}"
+                action = self.solution_actions[self.current_step]
+                step_info = f"Step {self.current_step + 1}/{len(self.solution_actions)}: {action}"
             else:
-                step_info = "COMPLETED!"
+                step_info = f"✓ COMPLETED! (Step {self.current_step}/{len(self.solution_states)-1})"
+
             self.view.update_status(step_info)
 
     def handle_next(self):
@@ -561,9 +683,15 @@ class PuzzleController:
             self.view.show_warning("Cảnh báo", "Vui lòng giải puzzle trước!")
             return
 
+        if self.is_animating:
+            self.view.show_warning("Cảnh báo", "Đang chạy auto, không thể điều hướng!")
+            return
+
         if self.current_step < len(self.solution_states) - 1:
             self.current_step += 1
             self.update_step_display()
+        else:
+            self.view.show_warning("Cảnh báo", "Đã tới bước cuối!")
 
     def handle_prev(self):
         """Xử lý nút Prev"""
@@ -571,40 +699,76 @@ class PuzzleController:
             self.view.show_warning("Cảnh báo", "Vui lòng giải puzzle trước!")
             return
 
+        if self.is_animating:
+            self.view.show_warning("Cảnh báo", "Đang chạy auto, không thể điều hướng!")
+            return
+
         if self.current_step > 0:
             self.current_step -= 1
             self.update_step_display()
+        else:
+            self.view.show_warning("Cảnh báo", "Đã tới bước đầu!")
 
     def handle_auto(self):
         """Xử lý nút Auto"""
-        if not self.solution_states or self.is_animating:
+        if not self.solution_states:
+            self.view.show_warning("Cảnh báo", "Vui lòng giải puzzle trước!")
+            return
+
+        if self.is_animating:
+            self.view.show_warning("Cảnh báo", "Đang chạy auto rồi, vui lòng chờ!")
             return
 
         self.is_animating = True
         self.view.disable_auto_button()
+        self.view.disable_solve_button()
+        self.view.disable_nav_buttons()
 
         def animate():
-            for step in range(len(self.solution_states)):
-                self.current_step = step
-                self.view.root.after(0, self.update_step_display)
-                time.sleep(0.6)
+            try:
+                for step in range(len(self.solution_states)):
+                    if not self.is_animating:  # Cho phép dừng
+                        break
 
-            self.is_animating = False
-            self.view.root.after(0, lambda: self.view.enable_auto_button())
+                    self.current_step = step
+                    self.view.root.after(0, self.update_step_display)
+                    time.sleep(0.8)  # Tăng thời gian để có thể nhìn rõ
+
+                # Show completed message
+                self.view.root.after(
+                    0, lambda: self.view.update_status("✓ ANIMATION COMPLETED!")
+                )
+            finally:
+                self.is_animating = False
+                self.view.root.after(0, self._enable_buttons_after_animation)
 
         thread = threading.Thread(target=animate)
         thread.daemon = True
         thread.start()
 
+    def _enable_buttons_after_animation(self):
+        """Enable buttons sau animation"""
+        self.view.enable_auto_button()
+        self.view.enable_solve_button()
+        self.view.enable_nav_buttons()
+
     def handle_reset(self):
         """Xử lý nút Reset"""
+        if self.is_solving or self.is_animating:
+            self.view.show_warning("Cảnh báo", "Không thể reset khi đang xử lý!")
+            return
+
         self.view.reset_canvas()
         self.view.display_info("")
         self.current_step = 0
         self.solution_states = []
         self.solution_actions = []
-        self.view.update_status("Ready")
         self.model = None
+
+        self.view.enable_solve_button()
+        self.view.disable_nav_buttons()
+        self.view.disable_auto_button()
+        self.view.update_status("Ready")
 
 
 # ============================================
